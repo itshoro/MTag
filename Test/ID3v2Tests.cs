@@ -45,7 +45,7 @@ namespace Test
             var stream = new MemoryStream(data);
 
             var tags = matcher.FindSignature(data).Invoke(stream);
-            tags.TotalHeaderSize().Should().Be(0);
+            tags.TagSize.Should().Be(0);
             stream.Close();
         }
 
@@ -58,7 +58,7 @@ namespace Test
             var stream = new MemoryStream(data);
 
             var tags = matcher.FindSignature(data).Invoke(stream);
-            tags.TotalHeaderSize().Should().Be(257);
+            tags.TagSize.Should().Be(257);
             stream.Close();
         }
 
@@ -74,7 +74,7 @@ namespace Test
 
             int size = (0x7F << 21) | (0x7F << 14) | (0x7F << 7) | (0x7F << 0);
 
-            tags.TotalHeaderSize().Should().Be(size);
+            tags.TagSize.Should().Be(size);
             stream.Close();
         }
 
@@ -86,7 +86,7 @@ namespace Test
 
             var exception = Assert.ThrowsException<InvalidHeaderException>(() => MTag.Create(stream));
 
-            exception.Message.Should().Be("File Header is too short");
+            exception.Message.Should().Be("Tags are too short");
             stream.Close();
         }
 
@@ -94,11 +94,24 @@ namespace Test
         public void WhenTestIsSetAsTitleTag_ReturnsTest()
         {
 
-            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x19, 0x54, 0x49, 0x54, 0x32, 0, 0, 0, 0xF, 0x0, 0x0, 0, 0x54, 0x65, 0x73, 0x74 };
+            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x0F, 0x54, 0x49, 0x54, 0x32, 0, 0, 0, 0x6, 0x0, 0x0, 0, 0x54, 0x65, 0x73, 0x74 };
             var stream = new MemoryStream(data);
 
             var tags = MTag.Create(stream);
             tags.Title.Should().Be("Test");
         }
+
+
+        [TestMethod]
+        public void WhenMultipleTagsAreSet_ReturnsTheSetTags ()
+        {
+            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x1E, 0x54, 0x49, 0x54, 0x32, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x54, 0x65, 0x73, 0x74, 0x41, 0x54, 0x41, 0x4C, 0x42, 0, 0, 0, 0x6, 0x0, 0x0, 0, 0x54, 0x65, 0x73, 0x74, 0x42 };
+            var stream = new MemoryStream(data);
+
+            var tags = MTag.Create(stream);
+            tags.Title.Should().Be("TestA");
+            tags.Album.Should().Be("TestB");
+        }
+
     }
 }

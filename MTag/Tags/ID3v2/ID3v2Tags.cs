@@ -88,6 +88,7 @@ namespace MusicMetaData.Tags
     }
     public class ID3v2Tags : ITags
     {
+        private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
         private static readonly byte[][] frames = new byte[][]
         {
             new byte[]{ 0x41, 0x45, 0x4E, 0x43 }, // AENC, Audio encryption
@@ -193,7 +194,7 @@ namespace MusicMetaData.Tags
             flags = header[5];
 
             var size = header.SubArray(6, 4);
-            totalSize = CalculateSize(size);
+            TagSize = CalculateSize(size, IGNORE_MOST_SIGNIFICANT_BYTE);
 
             //if (totalSize - HEADER_SIZE > 0)
             //{
@@ -213,41 +214,13 @@ namespace MusicMetaData.Tags
             //  - 2 Bytes Flags
 
             byte[] sizeData = reader.ReadBytes(4);
-            int frameSize = (sizeData[0] << 21) |
-                            (sizeData[1] << 14) |
-                            (sizeData[2] <<  7) |
-                            (sizeData[3] <<  0);
+            int frameSize = CalculateSize(sizeData);
 
-            if (frameSize - HEADER_SIZE < 1)
+            if (frameSize < 1)
                 throw new InvalidHeaderException("Frames Have To Be atleast of 1 byte size");
 
             byte[] flags = reader.ReadBytes(2); // We'll ignore these for now.
-            return reader.ReadBytes(frameSize - HEADER_SIZE);
-        }
-
-        /// <summary>
-        /// Helper Method that determines the amount of byte a header takes up.
-        /// The most significant bit in every byte is ignored as defined by the specification.
-        /// 
-        /// e.g. 00000000 00000000 00000010 00000001 becomes 0000 00000000 00000001 00000001
-        /// 
-        /// </summary>
-        /// <param name="data"></param>
-        /// <returns>Header Size calculated from the array, or -1 if the passed array's length is not 4.</returns>
-        private int CalculateSize(byte[] data)
-        {
-            if (data.Length != 4)
-                return -1;
-
-            int a = data[0] & 0b01111111;
-            int b = data[1] & 0b01111111;
-            int c = data[2] & 0b01111111;
-            int d = data[3] & 0b01111111;
-
-            return (a << 21) |
-                   (b << 14) |
-                   (c <<  7) |
-                   (d <<  0);
+            return reader.ReadBytes(frameSize);
         }
 
         public override void ReadTags(BinaryReader reader)
@@ -256,7 +229,7 @@ namespace MusicMetaData.Tags
 
 
             reader.BaseStream.Position = HEADER_SIZE;
-            byte[] header = reader.ReadBytes(totalSize - HEADER_SIZE);
+            byte[] header = reader.ReadBytes(TagSize - HEADER_SIZE);
 
             int position;
 
@@ -277,10 +250,11 @@ namespace MusicMetaData.Tags
         public override void ReadTags(Stream s)
         {
             BinaryReader reader = new BinaryReader(s);
-            byte[] header = reader.ReadBytes(totalSize);
 
-            if (header.Length != totalSize - HEADER_SIZE)
-                throw new InvalidHeaderException("File Header is too short");
+            // Note: I should probably remove this. If there is a problem with the Stream the BinaryReader should throw a "EndOfStreamException"
+            byte[] header = reader.ReadBytes(TagSize);
+            if (header.Length < TagSize)
+                throw new InvalidHeaderException("Tags are too short");
 
             ReadTags(reader);
             reader.Close();
@@ -299,10 +273,21 @@ namespace MusicMetaData.Tags
                 var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TALB]);
                 Album = ExtractTag(tagPositions[(int)ID3v2TagEnum.TALB], enc);
             }
+            if (tagPositions[(int)ID3v2TagEnum.TCOM] != null)
+            {
+                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TCOM]);
+                Composer = ExtractTag(tagPositions[(int)ID3v2TagEnum.TCOM], enc);
+            }
             if (tagPositions[(int)ID3v2TagEnum.TPE1] != null)
             {
                 var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TPE1]);
                 LeadArtist = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPE1], enc);
+            }
+
+            if (tagPositions[(int)ID3v2TagEnum.TPUB] != null)
+            {
+                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TPUB]);
+                Publisher = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPUB], enc);
             }
         }
 
@@ -342,6 +327,30 @@ namespace MusicMetaData.Tags
                 return Encoding.Unicode;
             }
             throw new NotSupportedException("Encoding not supported");
+        }
+
+        /// <summary>
+        /// Helper Method that determines the amount of byte a header takes up.
+        /// 
+        /// The masking allows for certain bytes to be ignored.
+        /// 
+        /// </summary>
+        /// <param name="data"></param>
+        /// <returns>Header Size calculated from the array, or -1 if the passed array's length is not 4.</returns>
+        private int CalculateSize(byte[] data, byte mask = 0b11111111)
+        {
+            if (data.Length != 4)
+                return -1;
+
+            int a = data[0] & mask;
+            int b = data[1] & mask;
+            int c = data[2] & mask;
+            int d = data[3] & mask;
+
+            return (a << 21) |
+                   (b << 14) |
+                   (c << 7) |
+                   (d << 0);
         }
     }
 }

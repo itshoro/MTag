@@ -86,6 +86,23 @@ namespace MusicMetaData.Tags
         WPUB = 72,
         WXXX = 73,
     }
+
+    public struct Frame
+    {
+        public int size;
+        public bool tagAlterPreservation;
+        public bool fileAlterPreservation;
+        public bool isReadOnly;
+        public bool isCompressed;
+        public bool isEncrypted;
+        public bool isGrouped; // Important: Adds a group identifier byte to the header!!
+
+        public byte groupIdentifier;
+
+        public Encoding enc;
+        public byte[] data;
+    }
+
     public class ID3v2Tags : ITags
     {
         private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
@@ -167,19 +184,23 @@ namespace MusicMetaData.Tags
             new byte[]{ 0x57, 0x58, 0x58, 0x58 }, // WXXX, User defined URL link frame
         };
 
-        private readonly byte majorVersion;
-        private readonly byte minorVersion;
-        private readonly byte flags; // a b c 0 0 0 0 0 | a = Unsynchronisation, b = Extended header, c = Experimental indicator
+        private readonly byte version;
+        private readonly byte revision;
+        private readonly bool isUnsyncronised;
+        private readonly bool hasExtendedHeader;
+        private readonly bool isExperimental;
 
-        private const int HEADER_SIZE = 10; // The Tags take up totalSize - HEADER_SIZE
+        private const int HEADER_SIZE = 10;
 
         public ID3v2Tags(Stream s)
         {
-            // The constructor Reads Information out of the Main Header, it contains the following information:
-            // 0x49 0x44 0x33 (ID3, has already been set by this point)
-            // 0x{1} 0x{2} (Two Bytes that determine the Current version | {1|Major}.{2|Minor})
-            // 0x?? A Flag Byte, see flags.
-            // And Four Bytes determining the total Size of the Header
+            /* The constructor extracts information of of the header of the file. It contains the following information:
+             * - 3 Bytes ("ID3")
+             * - 2 Bytes (Major Version, Revision)
+             * - 1 Byte  (Flags)
+             * - 4 Bytes (Size of the area for tags, excluding the 10 bytes used by this header)
+             */
+
             s.Position = 0;
 
             var reader = new BinaryReader(s);
@@ -188,30 +209,27 @@ namespace MusicMetaData.Tags
             if (header.Length != HEADER_SIZE)
                 throw new InvalidHeaderException("Corrupted File Signature Header");
 
-            majorVersion = header[3];
-            minorVersion = header[4];
+            version = header[3];
+            revision = header[4];
 
-            flags = header[5];
+            isUnsyncronised = header[5].IsSet(7);
+            hasExtendedHeader = header[5].IsSet(6);
+            isExperimental = header[5].IsSet(5);
 
             var size = header.SubArray(6, 4);
             TagSize = CalculateSize(size, IGNORE_MOST_SIGNIFICANT_BYTE);
-
-            //if (totalSize - HEADER_SIZE > 0)
-            //{
-            //    ReadTags(reader);
-            //}
-
-            // reader.Dispose();
         }
 
-        protected override byte[] ReadTag(BinaryReader reader)
+        private Frame ReadTag(BinaryReader reader)
         {
-            // At this point we have a fully functional ID3v2 Header, each "Frame" (that's what the name of the tags is),
-            // however has it's own header, so we have to determine the frame's flags and sizes.
-            // The Header of a Frame looks like this: 
-            //  - 4 Character (Already found, see tag)
-            //  - 4 Bytes Size
-            //  - 2 Bytes Flags
+            /* At this point we have a fully functional ID3v2 Header, each "Frame" (that's what the name of the tags is),
+             * however has it's own header, so we have to determine the frame's flags and size.
+             * The Header of a Frame looks like this:
+             * -  4 Character (Already found, see tag)
+             * -  4 Bytes Size
+             * -  2 Bytes Flags
+             * - (1 Byte Group Identifier, only set if flag for isGrouped is set)
+             */
 
             byte[] sizeData = reader.ReadBytes(4);
             int frameSize = CalculateSize(sizeData);
@@ -219,13 +237,36 @@ namespace MusicMetaData.Tags
             if (frameSize < 1)
                 throw new InvalidHeaderException("Frames Have To Be atleast of 1 byte size");
 
-            byte[] flags = reader.ReadBytes(2); // We'll ignore these for now.
-            return reader.ReadBytes(frameSize);
+            byte[] flags = reader.ReadBytes(2);
+            Frame frame = new Frame()
+            {
+                size = frameSize,
+                tagAlterPreservation = flags[0].IsSet(7),
+                fileAlterPreservation = flags[0].IsSet(6),
+                isReadOnly = flags[0].IsSet(5),
+                isCompressed = flags[1].IsSet(7),
+                isEncrypted = flags[1].IsSet(6),
+                isGrouped = flags[1].IsSet(5),
+
+                groupIdentifier = byte.MinValue
+            };
+
+            // IsGrouped adds one byte to the header that provides an identifier. Frames with the same identifier should be seen as a group
+            if (frame.isGrouped)
+            {
+                frame.groupIdentifier = reader.ReadByte();
+            }
+            frame.data = reader.ReadBytes(frameSize);
+
+            // Should we already remove the unnecessary bits here, as opposed to in ExtractTag? Could save a few bytes of storage.
+            frame.enc = GetEncoding(frame.data);
+
+            return frame;
         }
 
         public override void ReadTags(BinaryReader reader)
         {
-            byte[][] tagPositions = new byte[frames.Length][];
+            Frame[] tagPositions = new Frame[frames.Length];
 
 
             reader.BaseStream.Position = HEADER_SIZE;
@@ -256,33 +297,27 @@ namespace MusicMetaData.Tags
         }
 
         // TODO: Currently only sets Text Based Frames, need to implement number based ones and extend this method
-        private void ExtractTags(byte[][] tagPositions)
+        private void ExtractTags(Frame[] tagPositions)
         {
-            if (tagPositions[(int)ID3v2TagEnum.TIT2] != null)
+            if (tagPositions[(int)ID3v2TagEnum.TIT2].data != null)
             {
-                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TIT2]);
-                Title = ExtractTag(tagPositions[(int)ID3v2TagEnum.TIT2], enc);
+                Title = ExtractTag(tagPositions[(int)ID3v2TagEnum.TIT2].data, tagPositions[(int)ID3v2TagEnum.TIT2].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TALB] != null)
+            if (tagPositions[(int)ID3v2TagEnum.TALB].data != null)
             {
-                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TALB]);
-                Album = ExtractTag(tagPositions[(int)ID3v2TagEnum.TALB], enc);
+                Album = ExtractTag(tagPositions[(int)ID3v2TagEnum.TALB].data, tagPositions[(int)ID3v2TagEnum.TALB].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TCOM] != null)
+            if (tagPositions[(int)ID3v2TagEnum.TCOM].data != null)
             {
-                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TCOM]);
-                Composer = ExtractTag(tagPositions[(int)ID3v2TagEnum.TCOM], enc);
+                Composer = ExtractTag(tagPositions[(int)ID3v2TagEnum.TCOM].data, tagPositions[(int)ID3v2TagEnum.TCOM].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TPE1] != null)
+            if (tagPositions[(int)ID3v2TagEnum.TPE1].data != null)
             {
-                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TPE1]);
-                LeadArtist = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPE1], enc);
+                LeadArtist = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPE1].data, tagPositions[(int)ID3v2TagEnum.TPE1].enc);
             }
-
-            if (tagPositions[(int)ID3v2TagEnum.TPUB] != null)
+            if (tagPositions[(int)ID3v2TagEnum.TPUB].data != null)
             {
-                var enc = GetEncoding(ref tagPositions[(int)ID3v2TagEnum.TPUB]);
-                Publisher = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPUB], enc);
+                Publisher = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPUB].data, tagPositions[(int)ID3v2TagEnum.TPUB].enc);
             }
         }
 
@@ -297,15 +332,13 @@ namespace MusicMetaData.Tags
             
             // Discard bytes that are of no purpose to the saved information (Encoding Bytes, [Bitorder Bytes (which are only present for Unicode)])
             tag = tag.SubArray(index, tag.Length - index);
-
             return enc.GetString(tag);
         }
 
-        private Encoding GetEncoding(ref byte[] v)
+        private Encoding GetEncoding(byte[] v)
         {
             // 0x0 = [ISO-8859-1] ISO/IEC DIS 8859-1. 8-bit single-byte coded graphic character sets, Part 1: Latin alphabet No. 1. Technical committee / subcommittee: JTC 1 / SC 2
             // 0x1 = Unicode
-
             if (v[0] == 0x0)
             {
                 return Encoding.GetEncoding("iso-8859-1");
@@ -332,7 +365,7 @@ namespace MusicMetaData.Tags
         /// </summary>
         /// <param name="data"></param>
         /// <returns>Header Size calculated from the array, or -1 if the passed array's length is not 4.</returns>
-        private int CalculateSize(byte[] data, byte mask = 0b11111111)
+        private int CalculateSize(byte[] data, byte mask = byte.MaxValue)
         {
             if (data.Length != 4)
                 return -1;

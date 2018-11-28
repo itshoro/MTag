@@ -48,5 +48,10 @@ namespace MusicMetaData
             }
             return true;
         }
+
+        public static bool IsSet(this byte b, int position)
+        {
+            return (b >> position) != 0;
+        }
     }
 }

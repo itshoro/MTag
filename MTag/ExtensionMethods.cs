@@ -53,5 +53,14 @@ namespace MusicMetaData
         {
             return (b >> position) != 0;
         }
+
+        public static T[] Append<T>(this T[] array, T[] append)
+        {
+            T[] newArray = new T[array.Length + append.Length];
+            Array.Copy(array, newArray, array.Length);
+            Array.Copy(append, 0, newArray, array.Length, append.Length);
+
+            return newArray;
+        }
     }
 }

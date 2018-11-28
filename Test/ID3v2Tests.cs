@@ -79,18 +79,6 @@ namespace Test
         }
 
         [TestMethod]
-        public void WhenSizeOfHeaderIsGreaterThanThePassedData_ThrowInvalidHeaderException()
-        {
-            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0x12, 0x5C };
-            var stream = new MemoryStream(data);
-
-            var exception = Assert.ThrowsException<InvalidHeaderException>(() => MTag.Create(stream));
-
-            exception.Message.Should().Be("Tags are too short");
-            stream.Close();
-        }
-
-        [TestMethod]
         public void WhenTestIsSetAsTitleTag_ReturnsTest()
         {
 

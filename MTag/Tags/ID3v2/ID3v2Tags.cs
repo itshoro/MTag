@@ -251,11 +251,6 @@ namespace MusicMetaData.Tags
         {
             BinaryReader reader = new BinaryReader(s);
 
-            // Note: I should probably remove this. If there is a problem with the Stream the BinaryReader should throw a "EndOfStreamException"
-            byte[] header = reader.ReadBytes(TagSize);
-            if (header.Length < TagSize)
-                throw new InvalidHeaderException("Tags are too short");
-
             ReadTags(reader);
             reader.Close();
         }

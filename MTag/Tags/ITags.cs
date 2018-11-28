@@ -19,7 +19,6 @@ namespace MusicMetaData.MetaData
 
         public abstract void ReadTags(BinaryReader reader);
         public abstract void ReadTags(Stream s);
-        protected abstract byte[] ReadTag(BinaryReader reader);
 
         /// <summary>
         /// Returns The size of the area in which Tags are stored.

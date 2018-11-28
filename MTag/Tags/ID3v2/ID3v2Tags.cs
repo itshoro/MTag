@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace MusicMetaData.Tags
 {
-    public enum ID3v2TagEnum
+    public enum FrameId
     {
         AENC = 0,
         APIC = 1,
@@ -99,6 +99,8 @@ namespace MusicMetaData.Tags
 
         public byte groupIdentifier;
 
+        public long position;
+
         public Encoding enc;
         public byte[] data;
     }
@@ -106,7 +108,7 @@ namespace MusicMetaData.Tags
     public class ID3v2Tags : ITags
     {
         private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
-        private static readonly byte[][] frames = new byte[][]
+        private static readonly byte[][] frameIds = new byte[][]
         {
             new byte[]{ 0x41, 0x45, 0x4E, 0x43 }, // AENC, Audio encryption
             new byte[]{ 0x41, 0x50, 0x49, 0x43 }, // APIC, Attached Picture
@@ -191,6 +193,7 @@ namespace MusicMetaData.Tags
         private readonly bool isExperimental;
 
         private const int HEADER_SIZE = 10;
+        private int ExtendedHeaderSize = 0;
 
         public ID3v2Tags(Stream s)
         {
@@ -248,6 +251,7 @@ namespace MusicMetaData.Tags
                 isEncrypted = flags[1].IsSet(6),
                 isGrouped = flags[1].IsSet(5),
 
+
                 groupIdentifier = byte.MinValue
             };
 
@@ -266,26 +270,42 @@ namespace MusicMetaData.Tags
 
         public override void ReadTags(BinaryReader reader)
         {
-            Frame[] tagPositions = new Frame[frames.Length];
+            Frame[] tagPositions = new Frame[frameIds.Length];
 
+            if (hasExtendedHeader)
+            {
+                ReadExtendedHeader(reader);
+            }
 
-            reader.BaseStream.Position = HEADER_SIZE;
-            byte[] header = reader.ReadBytes(TagSize - HEADER_SIZE);
+            reader.BaseStream.Position = HEADER_SIZE + ExtendedHeaderSize;
+            byte[] header = reader.ReadBytes(TagSize - HEADER_SIZE - ExtendedHeaderSize);
 
             int position;
-
-            for (int i = 0; i < frames.Length; i++)
+            for (int i = 0; i < frameIds.Length; i++)
             {
-                if ((position = header.SearchPattern(frames[i])) == -1)
+                if ((position = header.SearchPattern(frameIds[i])) == -1)
                     continue;
 
-
-                position += frames[i].Length + HEADER_SIZE;
+                position += frameIds[i].Length + HEADER_SIZE;
                 reader.BaseStream.Position = position;
                 tagPositions[i] = ReadTag(reader);
             }
 
             ExtractTags(tagPositions);
+        }
+
+
+        private void ReadExtendedHeader(BinaryReader reader)
+        {
+            byte[] extendedHeader = reader.ReadBytes(HEADER_SIZE);
+            ExtendedHeaderSize = HEADER_SIZE;
+            // We ignore the extended Header for now.
+
+            if (extendedHeader[5].IsSet(7))
+            {
+                extendedHeader = extendedHeader.Append(reader.ReadBytes(4));
+                ExtendedHeaderSize += 4;
+            }
         }
 
         public override void ReadTags(Stream s)
@@ -299,25 +319,25 @@ namespace MusicMetaData.Tags
         // TODO: Currently only sets Text Based Frames, need to implement number based ones and extend this method
         private void ExtractTags(Frame[] tagPositions)
         {
-            if (tagPositions[(int)ID3v2TagEnum.TIT2].data != null)
+            if (tagPositions[(int)FrameId.TIT2].data != null)
             {
-                Title = ExtractTag(tagPositions[(int)ID3v2TagEnum.TIT2].data, tagPositions[(int)ID3v2TagEnum.TIT2].enc);
+                Title = ExtractTag(tagPositions[(int)FrameId.TIT2].data, tagPositions[(int)FrameId.TIT2].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TALB].data != null)
+            if (tagPositions[(int)FrameId.TALB].data != null)
             {
-                Album = ExtractTag(tagPositions[(int)ID3v2TagEnum.TALB].data, tagPositions[(int)ID3v2TagEnum.TALB].enc);
+                Album = ExtractTag(tagPositions[(int)FrameId.TALB].data, tagPositions[(int)FrameId.TALB].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TCOM].data != null)
+            if (tagPositions[(int)FrameId.TCOM].data != null)
             {
-                Composer = ExtractTag(tagPositions[(int)ID3v2TagEnum.TCOM].data, tagPositions[(int)ID3v2TagEnum.TCOM].enc);
+                Composer = ExtractTag(tagPositions[(int)FrameId.TCOM].data, tagPositions[(int)FrameId.TCOM].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TPE1].data != null)
+            if (tagPositions[(int)FrameId.TPE1].data != null)
             {
-                LeadArtist = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPE1].data, tagPositions[(int)ID3v2TagEnum.TPE1].enc);
+                LeadArtist = ExtractTag(tagPositions[(int)FrameId.TPE1].data, tagPositions[(int)FrameId.TPE1].enc);
             }
-            if (tagPositions[(int)ID3v2TagEnum.TPUB].data != null)
+            if (tagPositions[(int)FrameId.TPUB].data != null)
             {
-                Publisher = ExtractTag(tagPositions[(int)ID3v2TagEnum.TPUB].data, tagPositions[(int)ID3v2TagEnum.TPUB].enc);
+                Publisher = ExtractTag(tagPositions[(int)FrameId.TPUB].data, tagPositions[(int)FrameId.TPUB].enc);
             }
         }
 

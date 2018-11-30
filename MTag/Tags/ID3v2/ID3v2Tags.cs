@@ -343,16 +343,35 @@ namespace MusicMetaData.Tags
 
         private string ExtractTag(byte[] tag, Encoding enc)
         {
+            int terminator = tag.Length;
             // We assume Unicode Encoding
             int index = 3;
             if (enc == Encoding.GetEncoding("iso-8859-1"))
             {
                 index = 1;
+
+                for (int i = index; i < tag.Length; i++)
+                {
+                    if (tag[i] == 0x0)
+                    {
+                        terminator = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = index; i < tag.Length - 1; i++)
+                {
+                    if (tag[i] == 0x0 && tag[i+1] == 0x0)
+                    {
+                        terminator = i;
+                        break;
+                    }
+                }
             }
             
-            // Discard bytes that are of no purpose to the saved information (Encoding Bytes, [Bitorder Bytes (which are only present for Unicode)])
-            tag = tag.SubArray(index, tag.Length - index);
-            return enc.GetString(tag);
+            return enc.GetString(tag, index, terminator - index);
         }
 
         private Encoding GetEncoding(byte[] v)

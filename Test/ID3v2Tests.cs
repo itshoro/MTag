@@ -89,6 +89,28 @@ namespace Test
             tags.Title.Should().Be("Test");
         }
 
+        [TestMethod]
+        public void WhenLatin1EncodingIsUsed_TerminateStringOnNull()
+        {
+
+            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x11, 0x54, 0x49, 0x54, 0x32, 0, 0, 0, 0x8, 0x0, 0x0, 0, 0x54, 0x65, 0x73, 0x74, 0x0, 0x41 };
+            var stream = new MemoryStream(data);
+
+            var tags = MTag.Create(stream);
+            tags.Title.Should().Be("Test");
+        }
+
+        [TestMethod]
+        public void WhenFramesAreIntersecting_RemoveTheNestedFrame()
+        {
+
+            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x1A, 0x54, 0x49, 0x54, 0x32, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x54, 0x41, 0x4C, 0x42, 0x0, 0x0, 0x0, 0x6, 0x0, 0x0, 0x0, 0x54, 0x65, 0x73, 0x74 };
+            var stream = new MemoryStream(data);
+
+            var tags = MTag.Create(stream);
+            tags.Album.Should().NotBe("Test");
+            tags.Title.Should().Be("TALB");
+        }
 
         [TestMethod]
         public void WhenMultipleTagsAreSet_ReturnsTheSetTags ()

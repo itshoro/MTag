@@ -251,6 +251,7 @@ namespace MusicMetaData.Tags
                 isEncrypted = flags[1].IsSet(6),
                 isGrouped = flags[1].IsSet(5),
 
+                position = reader.BaseStream.Position - HEADER_SIZE,
 
                 groupIdentifier = byte.MinValue
             };
@@ -290,10 +291,42 @@ namespace MusicMetaData.Tags
                 reader.BaseStream.Position = position;
                 tagPositions[i] = ReadTag(reader);
             }
-
+            RemoveIntersectingFrame(tagPositions);
             ExtractTags(tagPositions);
         }
 
+        private void RemoveIntersectingFrame(Frame[] tagPositions)
+        {
+            Frame intersecting;
+            for (int i = 0; i < tagPositions.Length; i++)
+            {
+                if (IntersectsFrame(tagPositions[i], tagPositions, out intersecting))
+                {
+                    if (intersecting.position > tagPositions[i].position)
+                    {
+                        intersecting = new Frame();
+                    }
+                    else
+                    {
+                        tagPositions[i] = new Frame();
+                    }
+                }
+            }
+        }
+
+        private bool IntersectsFrame(Frame f, Frame[] tagPositions, out Frame intersecting)
+        {
+            foreach (Frame frame in tagPositions)
+            {
+                if (frame.data != null && frame.position != f.position && (f.position > frame.position && f.position <= frame.position + frame.size))
+                {
+                    intersecting = frame;
+                    return true;
+                }
+            }
+            intersecting = new Frame();
+            return false;
+        }
 
         private void ReadExtendedHeader(BinaryReader reader)
         {

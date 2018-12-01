@@ -271,7 +271,7 @@ namespace MusicMetaData.Tags
 
         public override void ReadTags(BinaryReader reader)
         {
-            Frame[] tagPositions = new Frame[frameIds.Length];
+            Frame[] frames = new Frame[frameIds.Length];
 
             if (hasExtendedHeader)
             {
@@ -289,34 +289,34 @@ namespace MusicMetaData.Tags
 
                 position += frameIds[i].Length + HEADER_SIZE;
                 reader.BaseStream.Position = position;
-                tagPositions[i] = ReadTag(reader);
+                frames[i] = ReadTag(reader);
             }
-            RemoveIntersectingFrame(tagPositions);
-            ExtractTags(tagPositions);
+            RemoveIntersectingFrame(frames);
+            ExtractFrameInformation(frames);
         }
 
-        private void RemoveIntersectingFrame(Frame[] tagPositions)
+        private void RemoveIntersectingFrame(Frame[] frames)
         {
             Frame intersecting;
-            for (int i = 0; i < tagPositions.Length; i++)
+            for (int i = 0; i < frames.Length; i++)
             {
-                if (IntersectsFrame(tagPositions[i], tagPositions, out intersecting))
+                if (frames[i].data != null && IntersectsFrame(frames[i], frames, out intersecting))
                 {
-                    if (intersecting.position > tagPositions[i].position)
+                    if (intersecting.position > frames[i].position)
                     {
                         intersecting = new Frame();
                     }
                     else
                     {
-                        tagPositions[i] = new Frame();
+                        frames[i] = new Frame();
                     }
                 }
             }
         }
 
-        private bool IntersectsFrame(Frame f, Frame[] tagPositions, out Frame intersecting)
+        private bool IntersectsFrame(Frame f, Frame[] frames, out Frame intersecting)
         {
-            foreach (Frame frame in tagPositions)
+            foreach (Frame frame in frames)
             {
                 if (frame.data != null && frame.position != f.position && (f.position > frame.position && f.position <= frame.position + frame.size))
                 {
@@ -350,27 +350,38 @@ namespace MusicMetaData.Tags
         }
 
         // TODO: Currently only sets Text Based Frames, need to implement number based ones and extend this method
-        private void ExtractTags(Frame[] tagPositions)
+        private void ExtractFrameInformation(Frame[] frames)
         {
-            if (tagPositions[(int)FrameId.TIT2].data != null)
+            if (frames[(int)FrameId.TIT2].data != null)
             {
-                Title = ExtractTag(tagPositions[(int)FrameId.TIT2].data, tagPositions[(int)FrameId.TIT2].enc);
+                Title = ExtractTag(frames[(int)FrameId.TIT2].data, frames[(int)FrameId.TIT2].enc);
             }
-            if (tagPositions[(int)FrameId.TALB].data != null)
+            if (frames[(int)FrameId.TALB].data != null)
             {
-                Album = ExtractTag(tagPositions[(int)FrameId.TALB].data, tagPositions[(int)FrameId.TALB].enc);
+                Album = ExtractTag(frames[(int)FrameId.TALB].data, frames[(int)FrameId.TALB].enc);
             }
-            if (tagPositions[(int)FrameId.TCOM].data != null)
+            if (frames[(int)FrameId.TCOM].data != null)
             {
-                Composer = ExtractTag(tagPositions[(int)FrameId.TCOM].data, tagPositions[(int)FrameId.TCOM].enc);
+                Composers = ExtractTag(frames[(int)FrameId.TCOM].data, frames[(int)FrameId.TCOM].enc).Split('/');
+                LeadComposer = Composers[0];
             }
-            if (tagPositions[(int)FrameId.TPE1].data != null)
+            if (frames[(int)FrameId.TPE1].data != null)
             {
-                LeadArtist = ExtractTag(tagPositions[(int)FrameId.TPE1].data, tagPositions[(int)FrameId.TPE1].enc);
+                Artists = ExtractTag(frames[(int)FrameId.TPE1].data, frames[(int)FrameId.TPE1].enc).Split('/');
+                LeadArtist = Artists[0];
             }
-            if (tagPositions[(int)FrameId.TPUB].data != null)
+            if (frames[(int)FrameId.TPUB].data != null)
             {
-                Publisher = ExtractTag(tagPositions[(int)FrameId.TPUB].data, tagPositions[(int)FrameId.TPUB].enc);
+                Publisher = ExtractTag(frames[(int)FrameId.TPUB].data, frames[(int)FrameId.TPUB].enc);
+            }
+            if (frames[(int)FrameId.TBPM].data != null)
+            {
+                BPM = int.Parse(ExtractTag(frames[(int)FrameId.TBPM].data, frames[(int)FrameId.TBPM].enc));
+            }
+            if (frames[(int)FrameId.TYER].data != null)
+            {
+                var year = ExtractTag(frames[(int)FrameId.TYER].data, frames[(int)FrameId.TYER].enc);
+                Year = int.Parse(year);
             }
         }
 
@@ -398,7 +409,7 @@ namespace MusicMetaData.Tags
                 {
                     if (tag[i] == 0x0 && tag[i+1] == 0x0)
                     {
-                        terminator = i;
+                        terminator = i + 1;
                         break;
                     }
                 }
@@ -423,8 +434,8 @@ namespace MusicMetaData.Tags
 
 
                 if (b1 > b2)
-                    return Encoding.BigEndianUnicode;
-                return Encoding.Unicode;
+                    return Encoding.Unicode;
+                return Encoding.BigEndianUnicode;
             }
             throw new NotSupportedException("Encoding not supported");
         }

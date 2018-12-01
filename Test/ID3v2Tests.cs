@@ -122,6 +122,14 @@ namespace Test
             tags.Title.Should().Be("TestA");
             tags.Album.Should().Be("TestB");
         }
+        [TestMethod]
+        public void WhenYearIsSet_ReturnYear()
+        {
+            byte[] data = new byte[] { 0x49, 0x44, 0x33, 0, 0, 0, 0, 0, 0, 0x1E, 0x54, 0x59, 0x45, 0x52, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x1, 0xFF, 0xFE, 0x32, 0x0, 0x30, 0x0, 0x31, 0x0, 0x33, 0x0, 0x0, 0x0 };
+            var stream = new MemoryStream(data);
 
+            var tags = MTag.Create(stream);
+            tags.Year.Should().Be(2013);
+        }
     }
 }

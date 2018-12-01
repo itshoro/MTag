@@ -6,7 +6,8 @@ namespace MusicMetaData.MetaData
     {
         public string Title { get; protected set; }
         public string Album { get; protected set; }
-        public string Composer { get; protected set; }
+        public string LeadComposer { get; protected set; }
+        public string[] Composers { get; protected set; }
         public string LeadArtist { get; protected set; }
         public string[] Artists { get; protected set; }
         public int Year { get; protected set; }

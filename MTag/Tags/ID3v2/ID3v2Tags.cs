@@ -3,8 +3,6 @@ using MusicMetaData.Tags.Exceptions;
 using MusicMetaData.Util;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -116,7 +114,7 @@ namespace MusicMetaData.Tags
         private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
 
         private readonly byte[][] frames;
-        private readonly Dictionary<FrameType, Action<string>> frameTypeFields;
+        private readonly Dictionary<FrameType, Action<string>> FrameTypePropertyActions;
 
         private readonly byte version;
         private readonly byte revision;
@@ -221,17 +219,16 @@ namespace MusicMetaData.Tags
                 new byte[]{ 0x57, 0x58, 0x58, 0x58 }, // WXXX, User defined URL link frame
             };
 
-            frameTypeFields = new Dictionary<FrameType, Action<string>>();
-            InitializeFrameDictionary();
+            FrameTypePropertyActions = new Dictionary<FrameType, Action<string>>();
+            AddFrameTypePropertyActions();
 
             stream.Position = 0;
-
             var reader = new BinaryReader(stream);
             byte[] header = reader.ReadBytes(HEADER_SIZE);
 
             if (header.Length < HEADER_SIZE)
             {
-                Logger.Log(LogLevel.Error, " Header might be corrupted or couldn't be read completely.");
+                Logger.Log(LogLevel.Error, "Header might be corrupted or couldn't be read completely.");
                 throw new InvalidHeaderException("Header is incomplete.");
             }
 
@@ -246,82 +243,85 @@ namespace MusicMetaData.Tags
             DataSize = CalculateFrameLength(size, IGNORE_MOST_SIGNIFICANT_BYTE);
         }
 
-        private void InitializeFrameDictionary()
+        /// <summary>
+        /// Fills the <see cref="FrameTypePropertyActions"/> Dictionary with the corresponding Actions in relation to the type.
+        /// </summary>
+        private void AddFrameTypePropertyActions()
         {
-            frameTypeFields.Add(FrameType.AENC, null);
-            frameTypeFields.Add(FrameType.APIC, null);
-            frameTypeFields.Add(FrameType.COMM, null);
-            frameTypeFields.Add(FrameType.COMR, null);
-            frameTypeFields.Add(FrameType.ENCR, null);
-            frameTypeFields.Add(FrameType.EQUA, null);
-            frameTypeFields.Add(FrameType.ETCO, null);
-            frameTypeFields.Add(FrameType.GEOB, null);
-            frameTypeFields.Add(FrameType.GRID, null);
-            frameTypeFields.Add(FrameType.IPLS, null);
-            frameTypeFields.Add(FrameType.LINK, null);
-            frameTypeFields.Add(FrameType.MCDI, null);
-            frameTypeFields.Add(FrameType.MLLT, null);
-            frameTypeFields.Add(FrameType.OWNE, null);
-            frameTypeFields.Add(FrameType.PRIV, null);
-            frameTypeFields.Add(FrameType.PCNT, null);
-            frameTypeFields.Add(FrameType.POPM, null);
-            frameTypeFields.Add(FrameType.POSS, null);
-            frameTypeFields.Add(FrameType.RBUF, null);
-            frameTypeFields.Add(FrameType.RVAD, null);
-            frameTypeFields.Add(FrameType.RVRB, null);
-            frameTypeFields.Add(FrameType.SYLT, null);
-            frameTypeFields.Add(FrameType.SYTC, null);
-            frameTypeFields.Add(FrameType.TALB, (value) => AlbumName = value);
-            frameTypeFields.Add(FrameType.TBPM, (value) => BPM = int.Parse(value));
-            frameTypeFields.Add(FrameType.TCOM, (value) => LeadComposer = value);
-            frameTypeFields.Add(FrameType.TCON, (value) => Genres = value.Split('\0'));
-            frameTypeFields.Add(FrameType.TCOP, null);
-            frameTypeFields.Add(FrameType.TDAT, null); 
-            frameTypeFields.Add(FrameType.TDLY, null); 
-            frameTypeFields.Add(FrameType.TENC, null); 
-            frameTypeFields.Add(FrameType.TEXT, null); 
-            frameTypeFields.Add(FrameType.TFLT, null); 
-            frameTypeFields.Add(FrameType.TIME, null); 
-            frameTypeFields.Add(FrameType.TIT1, null); 
-            frameTypeFields.Add(FrameType.TIT2, (value) => Title = value);
-            frameTypeFields.Add(FrameType.TIT3, null); 
-            frameTypeFields.Add(FrameType.TKEY, null); 
-            frameTypeFields.Add(FrameType.TLAN, null); 
-            frameTypeFields.Add(FrameType.TLEN, null); 
-            frameTypeFields.Add(FrameType.TMED, null); 
-            frameTypeFields.Add(FrameType.TOAL, null); 
-            frameTypeFields.Add(FrameType.TOFN, null); 
-            frameTypeFields.Add(FrameType.TOLY, null); 
-            frameTypeFields.Add(FrameType.TOPE, null); 
-            frameTypeFields.Add(FrameType.TORY, null); 
-            frameTypeFields.Add(FrameType.TOWN, null); 
-            frameTypeFields.Add(FrameType.TPE1, (value) => LeadArtist = value);
-            frameTypeFields.Add(FrameType.TPE2, (value) => Band = value);
-            frameTypeFields.Add(FrameType.TPE3, null);
-            frameTypeFields.Add(FrameType.TPE4, null);
-            frameTypeFields.Add(FrameType.TPOS, (value) => { var numbers = value.Split('/'); SetNumber = int.Parse(numbers[0]); AmountOfSets = int.Parse(numbers[1]); });
-            frameTypeFields.Add(FrameType.TPUB, (value) => Publisher = value);
-            frameTypeFields.Add(FrameType.TRCK, (value) => { var numbers = value.Split('/'); TrackNumber = int.Parse(numbers[0]); AmountOfTracksInSet = int.Parse(numbers[1]); });
-            frameTypeFields.Add(FrameType.TRDA, null);
-            frameTypeFields.Add(FrameType.TRSN, null);
-            frameTypeFields.Add(FrameType.TRSO, null);
-            frameTypeFields.Add(FrameType.TSIZ, null);
-            frameTypeFields.Add(FrameType.TSRC, null);
-            frameTypeFields.Add(FrameType.TSSE, null);
-            frameTypeFields.Add(FrameType.TYER, (value) => Year = int.Parse(value));
-            frameTypeFields.Add(FrameType.TXXX, null);
-            frameTypeFields.Add(FrameType.UFID, null);
-            frameTypeFields.Add(FrameType.USER, null);
-            frameTypeFields.Add(FrameType.USLT, null);
-            frameTypeFields.Add(FrameType.WCOM, null);
-            frameTypeFields.Add(FrameType.WCOP, null);
-            frameTypeFields.Add(FrameType.WOAF, null);
-            frameTypeFields.Add(FrameType.WOAR, null);
-            frameTypeFields.Add(FrameType.WOAS, null);
-            frameTypeFields.Add(FrameType.WORS, null);
-            frameTypeFields.Add(FrameType.WPAY, null);
-            frameTypeFields.Add(FrameType.WPUB, null);
-            frameTypeFields.Add(FrameType.WXXX, null);
+            FrameTypePropertyActions.Add(FrameType.AENC, null);
+            FrameTypePropertyActions.Add(FrameType.APIC, null);
+            FrameTypePropertyActions.Add(FrameType.COMM, null);
+            FrameTypePropertyActions.Add(FrameType.COMR, null);
+            FrameTypePropertyActions.Add(FrameType.ENCR, null);
+            FrameTypePropertyActions.Add(FrameType.EQUA, null);
+            FrameTypePropertyActions.Add(FrameType.ETCO, null);
+            FrameTypePropertyActions.Add(FrameType.GEOB, null);
+            FrameTypePropertyActions.Add(FrameType.GRID, null);
+            FrameTypePropertyActions.Add(FrameType.IPLS, null);
+            FrameTypePropertyActions.Add(FrameType.LINK, null);
+            FrameTypePropertyActions.Add(FrameType.MCDI, null);
+            FrameTypePropertyActions.Add(FrameType.MLLT, null);
+            FrameTypePropertyActions.Add(FrameType.OWNE, null);
+            FrameTypePropertyActions.Add(FrameType.PRIV, null);
+            FrameTypePropertyActions.Add(FrameType.PCNT, null);
+            FrameTypePropertyActions.Add(FrameType.POPM, null);
+            FrameTypePropertyActions.Add(FrameType.POSS, null);
+            FrameTypePropertyActions.Add(FrameType.RBUF, null);
+            FrameTypePropertyActions.Add(FrameType.RVAD, null);
+            FrameTypePropertyActions.Add(FrameType.RVRB, null);
+            FrameTypePropertyActions.Add(FrameType.SYLT, null);
+            FrameTypePropertyActions.Add(FrameType.SYTC, null);
+            FrameTypePropertyActions.Add(FrameType.TALB, (value) => AlbumName = value);
+            FrameTypePropertyActions.Add(FrameType.TBPM, (value) => BPM = int.Parse(value));
+            FrameTypePropertyActions.Add(FrameType.TCOM, (value) => LeadComposer = value);
+            FrameTypePropertyActions.Add(FrameType.TCON, (value) => Genres = value.Split('\0'));
+            FrameTypePropertyActions.Add(FrameType.TCOP, null);
+            FrameTypePropertyActions.Add(FrameType.TDAT, null);
+            FrameTypePropertyActions.Add(FrameType.TDLY, null);
+            FrameTypePropertyActions.Add(FrameType.TENC, null);
+            FrameTypePropertyActions.Add(FrameType.TEXT, null);
+            FrameTypePropertyActions.Add(FrameType.TFLT, null);
+            FrameTypePropertyActions.Add(FrameType.TIME, null);
+            FrameTypePropertyActions.Add(FrameType.TIT1, null);
+            FrameTypePropertyActions.Add(FrameType.TIT2, (value) => Title = value);
+            FrameTypePropertyActions.Add(FrameType.TIT3, null);
+            FrameTypePropertyActions.Add(FrameType.TKEY, null);
+            FrameTypePropertyActions.Add(FrameType.TLAN, null);
+            FrameTypePropertyActions.Add(FrameType.TLEN, null);
+            FrameTypePropertyActions.Add(FrameType.TMED, null);
+            FrameTypePropertyActions.Add(FrameType.TOAL, null);
+            FrameTypePropertyActions.Add(FrameType.TOFN, null);
+            FrameTypePropertyActions.Add(FrameType.TOLY, null);
+            FrameTypePropertyActions.Add(FrameType.TOPE, null);
+            FrameTypePropertyActions.Add(FrameType.TORY, null);
+            FrameTypePropertyActions.Add(FrameType.TOWN, null);
+            FrameTypePropertyActions.Add(FrameType.TPE1, (value) => LeadArtist = value);
+            FrameTypePropertyActions.Add(FrameType.TPE2, (value) => Band = value);
+            FrameTypePropertyActions.Add(FrameType.TPE3, null);
+            FrameTypePropertyActions.Add(FrameType.TPE4, null);
+            FrameTypePropertyActions.Add(FrameType.TPOS, (value) => { var numbers = value.Split('/'); SetNumber = int.Parse(numbers[0]); AmountOfSets = int.Parse(numbers[1]); });
+            FrameTypePropertyActions.Add(FrameType.TPUB, (value) => Publisher = value);
+            FrameTypePropertyActions.Add(FrameType.TRCK, (value) => { var numbers = value.Split('/'); TrackNumber = int.Parse(numbers[0]); AmountOfTracksInSet = int.Parse(numbers[1]); });
+            FrameTypePropertyActions.Add(FrameType.TRDA, null);
+            FrameTypePropertyActions.Add(FrameType.TRSN, null);
+            FrameTypePropertyActions.Add(FrameType.TRSO, null);
+            FrameTypePropertyActions.Add(FrameType.TSIZ, null);
+            FrameTypePropertyActions.Add(FrameType.TSRC, null);
+            FrameTypePropertyActions.Add(FrameType.TSSE, null);
+            FrameTypePropertyActions.Add(FrameType.TYER, (value) => Year = int.Parse(value));
+            FrameTypePropertyActions.Add(FrameType.TXXX, null);
+            FrameTypePropertyActions.Add(FrameType.UFID, null);
+            FrameTypePropertyActions.Add(FrameType.USER, null);
+            FrameTypePropertyActions.Add(FrameType.USLT, null);
+            FrameTypePropertyActions.Add(FrameType.WCOM, null);
+            FrameTypePropertyActions.Add(FrameType.WCOP, null);
+            FrameTypePropertyActions.Add(FrameType.WOAF, null);
+            FrameTypePropertyActions.Add(FrameType.WOAR, null);
+            FrameTypePropertyActions.Add(FrameType.WOAS, null);
+            FrameTypePropertyActions.Add(FrameType.WORS, null);
+            FrameTypePropertyActions.Add(FrameType.WPAY, null);
+            FrameTypePropertyActions.Add(FrameType.WPUB, null);
+            FrameTypePropertyActions.Add(FrameType.WXXX, null);
         }
 
         /// <summary>
@@ -367,7 +367,7 @@ namespace MusicMetaData.Tags
         private FrameType FindFrameType(byte[] type)
         {
             int pos = 0;
-            while (pos < frameTypeFields.Count)
+            while (pos < FrameTypePropertyActions.Count)
             {
                 if (frames[pos].SequenceEqual(type))
                     return (FrameType)(pos);
@@ -450,7 +450,7 @@ namespace MusicMetaData.Tags
         /// <param name="value">The value that should be inserted</param>
         private void SetTag(FrameType type, string value)
         {
-            if (frameTypeFields.TryGetValue(type, out Action<string> setAction) && setAction != null)
+            if (FrameTypePropertyActions.TryGetValue(type, out Action<string> setAction) && setAction != null)
             {
                 setAction(value);
             }

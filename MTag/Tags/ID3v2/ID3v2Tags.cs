@@ -1,16 +1,22 @@
 ﻿using MusicMetaData.MetaData;
 using MusicMetaData.Tags.Exceptions;
+using MusicMetaData.Util;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace MusicMetaData.Tags
 {
-    public enum FrameId
+    /// <summary>
+    /// The type of a frame
+    /// </summary>
+    public enum FrameType
     {
+        Invalid = -1,
+
         AENC = 0,
         APIC = 1,
         COMM = 2,
@@ -87,27 +93,27 @@ namespace MusicMetaData.Tags
         WXXX = 73,
     }
 
-    public struct Frame
+    /// <summary>
+    /// A struct containing all the information that can be stored in the header of a frame.
+    /// </summary>
+    public struct FrameHeader
     {
+        public FrameType type;
         public int size;
         public bool tagAlterPreservation;
         public bool fileAlterPreservation;
         public bool isReadOnly;
         public bool isCompressed;
         public bool isEncrypted;
-        public bool isGrouped; // Important: Adds a group identifier byte to the header!!
-
-        public byte groupIdentifier;
-
+        public bool isGrouped;
+        public byte? groupIdentifier;
         public long position;
-
-        public Encoding enc;
-        public byte[] data;
     }
 
     public class ID3v2Tags : ITags
     {
         private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
+
         private static readonly byte[][] frameIds = new byte[][]
         {
             new byte[]{ 0x41, 0x45, 0x4E, 0x43 }, // AENC, Audio encryption
@@ -163,7 +169,7 @@ namespace MusicMetaData.Tags
             new byte[]{ 0x54, 0x50, 0x45, 0x34 }, // TPE4, Interpreted, Remixed, or otherwise modified by
             new byte[]{ 0x54, 0x50, 0x4F, 0x53 }, // TPOS, Part of a set
             new byte[]{ 0x54, 0x50, 0x50, 0x42 }, // TPUB, Publisher
-            new byte[]{ 0x54, 0x52, 0x53, 0x53 }, // TRCK, Track number / Position in set
+            new byte[]{ 0x54, 0x52, 0x43, 0x4B }, // TRCK, Track number (/ Position in set)
             new byte[]{ 0x54, 0x52, 0x44, 0x41 }, // TRDA, Recording dates
             new byte[]{ 0x54, 0x52, 0x53, 0x4E }, // TRSN, Internet radio station name
             new byte[]{ 0x54, 0x52, 0x53, 0x4F }, // TRSO, Internet radio station owner
@@ -188,90 +194,134 @@ namespace MusicMetaData.Tags
 
         private readonly byte version;
         private readonly byte revision;
-        private readonly bool isUnsyncronised;
+        private readonly bool isUnsynchronized;
         private readonly bool hasExtendedHeader;
         private readonly bool isExperimental;
 
+        public int DataSize { get; private set; }
         private const int HEADER_SIZE = 10;
         private int ExtendedHeaderSize = 0;
 
-        public ID3v2Tags(Stream s)
+        private const int ISO_8859_1 = 0x0;
+        private const int UNICODE = 0x1;
+
+        /// <summary>
+        /// Initializes a new <see cref="ID3v2Tags"/> object.
+        /// Extracts information from the header of the file, the header consists of the following building blocks:
+        ///
+        /// - 3 Bytes ("ID3")
+        /// - 2 Bytes (Major Version, Revision)
+        /// - 1 Byte  (Flags)
+        /// - 4 Bytes (Size of the area for tags, excluding the 10 bytes used by this header)
+        /// </summary>
+        /// <param name="stream"></param>
+        public ID3v2Tags(Stream stream)
         {
-            /* The constructor extracts information of of the header of the file. It contains the following information:
-             * - 3 Bytes ("ID3")
-             * - 2 Bytes (Major Version, Revision)
-             * - 1 Byte  (Flags)
-             * - 4 Bytes (Size of the area for tags, excluding the 10 bytes used by this header)
-             */
+            stream.Position = 0;
 
-            s.Position = 0;
-
-            var reader = new BinaryReader(s);
+            var reader = new BinaryReader(stream);
             byte[] header = reader.ReadBytes(HEADER_SIZE);
 
-            if (header.Length != HEADER_SIZE)
-                throw new InvalidHeaderException("Corrupted File Signature Header");
+            if (header.Length < HEADER_SIZE)
+            {
+                Logger.Log(LogLevel.Error, " Header might be corrupted or couldn't be read completely.");
+                throw new InvalidHeaderException("Header is incomplete.");
+            }
 
             version = header[3];
             revision = header[4];
 
-            isUnsyncronised = header[5].IsSet(7);
+            isUnsynchronized = header[5].IsSet(7);
             hasExtendedHeader = header[5].IsSet(6);
             isExperimental = header[5].IsSet(5);
 
             var size = header.SubArray(6, 4);
-            TagSize = CalculateSize(size, IGNORE_MOST_SIGNIFICANT_BYTE);
+            DataSize = CalculateFrameLength(size, IGNORE_MOST_SIGNIFICANT_BYTE);
         }
 
-        private Frame ReadTag(BinaryReader reader)
+        /// <summary>
+        /// Initializes a <see cref="FrameHeader"/> that holds information on a tag
+        /// </summary>
+        /// <param name="frameHeader">An array holding the byte data for the <see cref="FrameHeader"/></param>
+        /// <returns>The <see cref="FrameHeader"/></returns>
+        private FrameHeader InitializeFrameHeader(byte[] frameHeader)
         {
-            /* At this point we have a fully functional ID3v2 Header, each "Frame" (that's what the name of the tags is),
-             * however has it's own header, so we have to determine the frame's flags and size.
-             * The Header of a Frame looks like this:
-             * -  4 Character (Already found, see tag)
-             * -  4 Bytes Size
-             * -  2 Bytes Flags
-             * - (1 Byte Group Identifier, only set if flag for isGrouped is set)
-             */
+            //  The Header of a Frame looks like this:
+            //   -4 Character(Already found, see tag)
+            //   -4 Bytes Size
+            //   -2 Bytes Flags
+            //   -(1 Byte Group Identifier, only set if flag for isGrouped is set)
 
-            byte[] sizeData = reader.ReadBytes(4);
-            int frameSize = CalculateSize(sizeData);
+            FrameType type = FindFrameType(frameHeader.SubArray(0, 4));
+            int length = CalculateFrameLength(frameHeader.SubArray(4, 4));
 
-            if (frameSize < 1)
-                throw new InvalidHeaderException("Frames Have To Be atleast of 1 byte size");
+            if (length < 1)
+                throw new ArgumentOutOfRangeException("[Frame] Length has to be atleast 1 (excluding header)");
 
-            byte[] flags = reader.ReadBytes(2);
-            Frame frame = new Frame()
+            byte[] flags = frameHeader.SubArray(8, 2);
+            FrameHeader header = new FrameHeader()
             {
-                size = frameSize,
+                type = type,
+                size = length,
                 tagAlterPreservation = flags[0].IsSet(7),
                 fileAlterPreservation = flags[0].IsSet(6),
                 isReadOnly = flags[0].IsSet(5),
                 isCompressed = flags[1].IsSet(7),
                 isEncrypted = flags[1].IsSet(6),
-                isGrouped = flags[1].IsSet(5),
-
-                position = reader.BaseStream.Position - HEADER_SIZE,
-
-                groupIdentifier = byte.MinValue
+                isGrouped = flags[1].IsSet(5)
             };
 
-            // IsGrouped adds one byte to the header that provides an identifier. Frames with the same identifier should be seen as a group
-            if (frame.isGrouped)
-            {
-                frame.groupIdentifier = reader.ReadByte();
-            }
-            frame.data = reader.ReadBytes(frameSize);
-
-            // Should we already remove the unnecessary bits here, as opposed to in ExtractTag? Could save a few bytes of storage.
-            frame.enc = GetEncoding(frame.data);
-
-            return frame;
+            return header;
         }
 
-        public override void ReadTags(BinaryReader reader)
+        /// <summary>
+        /// Finds the <see cref="FrameType"/> of the tag, which is stored in the header of a frame
+        /// </summary>
+        /// <param name="type">An array filled with the 4 bytes that make up a type</param>
+        /// <returns>The <see cref="FrameType"/></returns>
+        private FrameType FindFrameType(byte[] type)
         {
-            Frame[] frames = new Frame[frameIds.Length];
+            int pos = 0;
+            while (pos < frameIds.Length)
+            {
+                if (frameIds[pos].SequenceEqual(type))
+                    return (FrameType)(pos);
+                pos++;
+            }
+            return FrameType.Invalid;
+        }
+
+        /// <summary>
+        /// Checks if the provided <see cref="FrameType"/> contains data in a numeric or url format
+        /// </summary>
+        /// <param name="id">The frame id</param>
+        /// <returns>True when the FrameId is in a numeric or url format</returns>
+        private bool IsNumericOrUrl(FrameType id)
+        {
+            var numericOrUrl = new FrameType[] {
+                FrameType.TBPM,
+                FrameType.TCON,
+                FrameType.TDAT,
+                FrameType.TDLY,
+                FrameType.TIME,
+                FrameType.TLEN,
+                FrameType.TPOS,
+                FrameType.TRCK,
+                FrameType.TSIZ,
+                FrameType.TYER,
+                FrameType.OWNE,
+                FrameType.COMR
+            };
+            return numericOrUrl.Contains(id);
+        }
+
+        /// <summary>
+        /// Extracts tags from a given media file that has been fed into a <see cref="BinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The binary reader</param>
+        public override void ExtractTags(BinaryReader reader)
+        {
+            var headers = new List<FrameHeader>();
 
             if (hasExtendedHeader)
             {
@@ -279,60 +329,99 @@ namespace MusicMetaData.Tags
             }
 
             reader.BaseStream.Position = HEADER_SIZE + ExtendedHeaderSize;
-            byte[] header = reader.ReadBytes(TagSize - HEADER_SIZE - ExtendedHeaderSize);
+            byte[] data = reader.ReadBytes(DataSize - HEADER_SIZE - ExtendedHeaderSize);
 
-            int position;
-            for (int i = 0; i < frameIds.Length; i++)
+            int position = 0;
+            while (position < data.Length)
             {
-                if ((position = header.SearchPattern(frameIds[i])) == -1)
-                    continue;
-
-                position += frameIds[i].Length + HEADER_SIZE;
-                reader.BaseStream.Position = position;
-                frames[i] = ReadTag(reader);
-            }
-            RemoveIntersectingFrame(frames);
-            ExtractFrameInformation(frames);
-        }
-
-        private void RemoveIntersectingFrame(Frame[] frames)
-        {
-            Frame intersecting;
-            for (int i = 0; i < frames.Length; i++)
-            {
-                if (frames[i].data != null && IntersectsFrame(frames[i], frames, out intersecting))
+                FrameHeader header = InitializeFrameHeader(data.SubArray(position, 10));
+                header.position = position;
+                if (header.isGrouped)
                 {
-                    if (intersecting.position > frames[i].position)
-                    {
-                        intersecting = new Frame();
-                    }
-                    else
-                    {
-                        frames[i] = new Frame();
-                    }
+                    header.groupIdentifier = data[position + HEADER_SIZE];
+                    position++;
                 }
+                position += header.size + HEADER_SIZE;
+                headers.Add(header);
             }
-        }
 
-        private bool IntersectsFrame(Frame f, Frame[] frames, out Frame intersecting)
-        {
-            foreach (Frame frame in frames)
+            var textHeaders = headers.Where(h => h.type >= FrameType.TALB && h.type <= FrameType.TYER);
+            foreach (var header in textHeaders)
             {
-                if (frame.data != null && frame.position != f.position && (f.position > frame.position && f.position <= frame.position + frame.size))
+                Encoding encoding = Encoding.GetEncoding("iso-8859-1");
+                var frameData = data.SubArray((int)header.position + HEADER_SIZE, header.size);
+                if (!IsNumericOrUrl(header.type))
                 {
-                    intersecting = frame;
-                    return true;
+                    encoding = GetEncoding(frameData.SubArray(0, 3));
                 }
+                SetTag(header.type, ExtractTextData(frameData, encoding));
             }
-            intersecting = new Frame();
-            return false;
         }
 
+        /// <summary>
+        /// Sets the corresponding fields for the extracted tags.
+        /// </summary>
+        /// <param name="type">The type of the tag that is to be set</param>
+        /// <param name="value">The value that should be inserted</param>
+        private void SetTag(FrameType type, string value)
+        {
+            // Consider having a dictionary having a ref to the field in the Tag to circumvent most of the switch / case (repetition)
+            switch (type)
+            {
+                case FrameType.TALB:
+                    AlbumName = value;
+                    break;
+                case FrameType.TBPM:
+                    if (int.TryParse(value, out var _bpm))
+                        BPM = _bpm;
+                    break;
+                case FrameType.TCOM:
+                    LeadComposer = value;
+                    break;
+                case FrameType.TCON:
+                    // TODO: ID3v2 is able to use numbers to represent predefined genres. The list is part of the ID3v1 implementation.
+                    Genres = value.Split('\0');
+                    break;
+                case FrameType.TPUB:
+                    Publisher = value;
+                    break;
+                case FrameType.TIT2:
+                    Title = value;
+                    break;
+                case FrameType.TYER:
+                    if (int.TryParse(value, out var _year))
+                        Year = _year;
+                    break;
+                case FrameType.TRCK:
+                    var numbers = value.Split('/');
+                    if (int.TryParse(numbers[0], out var _tracknumber))
+                        TrackNumber = _tracknumber;
+                    if (int.TryParse(numbers[1], out var _totaltracksinset))
+                        AmountOfTracksInSet = _totaltracksinset;
+                    break;
+                case FrameType.TPE2:
+                    LeadArtist = value;
+                    break;
+                case FrameType.TPOS:
+                    numbers = value.Split('/');
+                    if (int.TryParse(numbers[0], out var _setnumber))
+                        SetNumber = _setnumber;
+                    if (int.TryParse(numbers[1], out var _amountofsets))
+                        AmountOfSets = _amountofsets;
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Extracts data from the extended ID3v2 header.
+        /// TODO!
+        /// </summary>
+        /// <param name="reader">A binary reader at the first position of the extended header</param>
         private void ReadExtendedHeader(BinaryReader reader)
         {
             byte[] extendedHeader = reader.ReadBytes(HEADER_SIZE);
             ExtendedHeaderSize = HEADER_SIZE;
-            // We ignore the extended Header for now.
+            // TODO: We ignore the extended Header for now.
 
             if (extendedHeader[5].IsSet(7))
             {
@@ -341,62 +430,36 @@ namespace MusicMetaData.Tags
             }
         }
 
-        public override void ReadTags(Stream s)
+        /// <summary>
+        /// Extracts the Tags from the given Stream object
+        /// </summary>
+        /// <param name="stream">The stream object</param>
+        public override void ExtractTags(Stream stream)
         {
-            BinaryReader reader = new BinaryReader(s);
+            BinaryReader reader = new BinaryReader(stream);
 
-            ReadTags(reader);
+            ExtractTags(reader);
             reader.Close();
         }
 
-        // TODO: Currently only sets Text Based Frames, need to implement number based ones and extend this method
-        private void ExtractFrameInformation(Frame[] frames)
+        /// <summary>
+        /// Extracts text information out of the given data array, by using the provided Encoding
+        /// </summary>
+        /// <param name="data">The array containing information</param>
+        /// <param name="encoding">The encoding</param>
+        /// <returns>A string containing the information</returns>
+        private string ExtractTextData(byte[] data, Encoding encoding)
         {
-            if (frames[(int)FrameId.TIT2].data != null)
-            {
-                Title = ExtractTag(frames[(int)FrameId.TIT2].data, frames[(int)FrameId.TIT2].enc);
-            }
-            if (frames[(int)FrameId.TALB].data != null)
-            {
-                Album = ExtractTag(frames[(int)FrameId.TALB].data, frames[(int)FrameId.TALB].enc);
-            }
-            if (frames[(int)FrameId.TCOM].data != null)
-            {
-                Composers = ExtractTag(frames[(int)FrameId.TCOM].data, frames[(int)FrameId.TCOM].enc).Split('/');
-                LeadComposer = Composers[0];
-            }
-            if (frames[(int)FrameId.TPE1].data != null)
-            {
-                Artists = ExtractTag(frames[(int)FrameId.TPE1].data, frames[(int)FrameId.TPE1].enc).Split('/');
-                LeadArtist = Artists[0];
-            }
-            if (frames[(int)FrameId.TPUB].data != null)
-            {
-                Publisher = ExtractTag(frames[(int)FrameId.TPUB].data, frames[(int)FrameId.TPUB].enc);
-            }
-            if (frames[(int)FrameId.TBPM].data != null)
-            {
-                BPM = int.Parse(ExtractTag(frames[(int)FrameId.TBPM].data, frames[(int)FrameId.TBPM].enc));
-            }
-            if (frames[(int)FrameId.TYER].data != null)
-            {
-                var year = ExtractTag(frames[(int)FrameId.TYER].data, frames[(int)FrameId.TYER].enc);
-                Year = int.Parse(year);
-            }
-        }
-
-        private string ExtractTag(byte[] tag, Encoding enc)
-        {
-            int terminator = tag.Length;
+            int terminator = data.Length;
             // We assume Unicode Encoding
             int index = 3;
-            if (enc == Encoding.GetEncoding("iso-8859-1"))
+            if (encoding == Encoding.GetEncoding("iso-8859-1"))
             {
                 index = 1;
 
-                for (int i = index; i < tag.Length; i++)
+                for (int i = index; i < data.Length; i++)
                 {
-                    if (tag[i] == 0x0)
+                    if (data[i] == 0x0)
                     {
                         terminator = i;
                         break;
@@ -405,33 +468,37 @@ namespace MusicMetaData.Tags
             }
             else
             {
-                for (int i = index; i < tag.Length - 1; i++)
+                for (int i = index; i < data.Length - 1; i++)
                 {
-                    if (tag[i] == 0x0 && tag[i+1] == 0x0)
+                    if (data[i] == 0x0 && data[i + 1] == 0x0)
                     {
                         terminator = i + 1;
                         break;
                     }
                 }
             }
-            
-            return enc.GetString(tag, index, terminator - index);
+
+            return encoding.GetString(data, index, terminator - index);
         }
 
-        private Encoding GetEncoding(byte[] v)
+        /// <summary>
+        /// Returns the corresponding Encoding defined by the provided encoding information in front of the data block.
+        /// </summary>
+        /// <param name="encodingInformation">The encoding information</param>
+        /// <returns>The encoding</returns>
+        private Encoding GetEncoding(byte[] encodingInformation)
         {
             // 0x0 = [ISO-8859-1] ISO/IEC DIS 8859-1. 8-bit single-byte coded graphic character sets, Part 1: Latin alphabet No. 1. Technical committee / subcommittee: JTC 1 / SC 2
             // 0x1 = Unicode
-            if (v[0] == 0x0)
+            if (encodingInformation[0] == ISO_8859_1)
             {
                 return Encoding.GetEncoding("iso-8859-1");
             }
-            else if (v[0] == 0x1)
+            else if (encodingInformation[0] == UNICODE)
             {
-                // 0x1 HAS to be followed by two bytes either "0xFF 0xFE" or "0xFE 0xFF" to determine the byte order
-                byte b1 = v[1];
-                byte b2 = v[2];
-
+                // UNICODE HAS to be followed by two bytes either "0xFF 0xFE" or "0xFE 0xFF" to determine the byte order
+                byte b1 = encodingInformation[1];
+                byte b2 = encodingInformation[2];
 
                 if (b1 > b2)
                     return Encoding.Unicode;
@@ -442,13 +509,13 @@ namespace MusicMetaData.Tags
 
         /// <summary>
         /// Helper Method that determines the amount of byte a header takes up.
-        /// 
+        ///
         /// The masking allows for certain bytes to be ignored.
-        /// 
+        ///
         /// </summary>
         /// <param name="data"></param>
         /// <returns>Header Size calculated from the array, or -1 if the passed array's length is not 4.</returns>
-        private int CalculateSize(byte[] data, byte mask = byte.MaxValue)
+        private int CalculateFrameLength(byte[] data, byte mask = byte.MaxValue)
         {
             if (data.Length != 4)
                 return -1;

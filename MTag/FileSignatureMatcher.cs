@@ -15,7 +15,8 @@ namespace MusicMetaData
     {
 
         // https://en.wikipedia.org/wiki/List_of_file_signatures
-        ReadOnlyDictionary<byte[], Func<Stream, ITags>> SupportedSignatures;
+        private readonly ReadOnlyDictionary<byte[], Func<Stream, ITags>> SupportedSignatures;
+
 
         public FileSignatureMatcher()
         {

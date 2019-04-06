@@ -4,6 +4,14 @@ namespace MusicMetaData
 {
     static class ExtensionMethods
     {
+        /// <summary>
+        /// Creates a new array that is a subset of the given array.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="array">The array containing all items</param>
+        /// <param name="index">Start position of the subset</param>
+        /// <param name="length">Amount of items that are to be copied</param>
+        /// <returns>The subset array</returns>
         public static T[] SubArray<T>(this T[] array, int index, int length)
         {
             var subArray = new T[length];
@@ -49,6 +57,12 @@ namespace MusicMetaData
             return true;
         }
 
+        /// <summary>
+        /// Checks if a certain bit is set to 1 in a byte
+        /// </summary>
+        /// <param name="b">The byte</param>
+        /// <param name="position">Position of the bit that should be checked</param>
+        /// <returns>True when the bit is 1</returns>
         public static bool IsSet(this byte b, int position)
         {
             return (b >> position) != 0;

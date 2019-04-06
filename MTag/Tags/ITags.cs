@@ -5,7 +5,9 @@ namespace MusicMetaData.MetaData
     public abstract class ITags
     {
         public string Title { get; protected set; }
-        public string Album { get; protected set; }
+        public string AlbumName { get; protected set; }
+        public int SetNumber { get; protected set; }
+        public int AmountOfSets { get; protected set; }
         public string LeadComposer { get; protected set; }
         public string[] Composers { get; protected set; }
         public string LeadArtist { get; protected set; }
@@ -16,15 +18,15 @@ namespace MusicMetaData.MetaData
         public string Publisher { get; protected set; }
         public string[] Genres { get; protected set; }
         public int TrackNumber { get; protected set; }
+        public int AmountOfTracksInSet { get; protected set; }
 
+        public byte[] FrontCover { get; protected set; }
+        public byte[] BackCover { get; protected set; }
+        public byte[] Icon { get; protected set; }
 
-        public abstract void ReadTags(BinaryReader reader);
-        public abstract void ReadTags(Stream s);
-
-        /// <summary>
-        /// Returns The size of the area in which Tags are stored.
-        /// Excludes the 10 Bytes of ID3v2 Headers
-        /// </summary>
-        public int TagSize { get; protected set; }
+        public byte[] Images { get; protected set; }
+        
+        public abstract void ExtractTags(BinaryReader reader);
+        public abstract void ExtractTags(Stream s);
     }
 }

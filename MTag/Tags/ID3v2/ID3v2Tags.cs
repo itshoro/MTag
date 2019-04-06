@@ -3,6 +3,7 @@ using MusicMetaData.Tags.Exceptions;
 using MusicMetaData.Util;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -114,83 +115,8 @@ namespace MusicMetaData.Tags
     {
         private const byte IGNORE_MOST_SIGNIFICANT_BYTE = 0b01111111;
 
-        private static readonly byte[][] frameIds = new byte[][]
-        {
-            new byte[]{ 0x41, 0x45, 0x4E, 0x43 }, // AENC, Audio encryption
-            new byte[]{ 0x41, 0x50, 0x49, 0x43 }, // APIC, Attached Picture
-            new byte[]{ 0x43, 0x4F, 0x4D, 0x4D }, // COMM, Comment
-            new byte[]{ 0x43, 0x4F, 0x4D, 0x52 }, // COMR, Commercial frame
-            new byte[]{ 0x45, 0x4e, 0x43, 0x52 }, // ENCR, Encryption method registration
-            new byte[]{ 0x45, 0x51, 0x55, 0x41 }, // EQUA, Equalization
-            new byte[]{ 0x45, 0x54, 0x43, 0x4F }, // ETCO, Event Timing Codes
-            new byte[]{ 0x47, 0x45, 0x4F, 0x42 }, // GEOB, General Encapsulated Object
-            new byte[]{ 0x47, 0x52, 0x49, 0x44 }, // GRID, Group identification registration
-            new byte[]{ 0x49, 0x50, 0x4C, 0x53 }, // IPLS, Involved People List
-            new byte[]{ 0x4C, 0x49, 0x4E, 0x4B }, // LINK, Linked Information
-            new byte[]{ 0x4D, 0x43, 0x44, 0x49 }, // MCDI, Music CD identifier
-            new byte[]{ 0x4D, 0x4C, 0x4C, 0x54 }, // MLLT, MPEG location lookup table
-            new byte[]{ 0x4F, 0x57, 0x4E, 0x45 }, // OWNE, Ownership frame
-            new byte[]{ 0x50, 0x52, 0x49, 0x56 }, // PRIV, Private frame
-            new byte[]{ 0x50, 0x43, 0x4E, 0x54 }, // PCNT, Play Counter
-            new byte[]{ 0x50, 0x4F, 0x50, 0x4D }, // POPM, Popularimeter
-            new byte[]{ 0x50, 0x4F, 0x53, 0x53 }, // POSS, Position Synchronisation frame
-            new byte[]{ 0x52, 0x42, 0x55, 0x46 }, // RBUF, Recommended Buffer Size
-            new byte[]{ 0x52, 0x56, 0x41, 0x44 }, // RVAD, Relative volume adjustment
-            new byte[]{ 0x52, 0x56, 0x52, 0x42 }, // RVRB, Reverb
-            new byte[]{ 0x53, 0x59, 0x4C, 0x54 }, // SYLT, Synchronized lyric / text
-            new byte[]{ 0x53, 0x59, 0x54, 0x43 }, // SYTC, Synchronized tempo codes
-            new byte[]{ 0x54, 0x41, 0x4C, 0x42 }, // TALB, Album / Movie / Show title
-            new byte[]{ 0x54, 0x42, 0x50, 0x4D }, // TBPM, BPM
-            new byte[]{ 0x54, 0x43, 0x4F, 0x4D }, // TCOM, Composer
-            new byte[]{ 0x54, 0x43, 0x4F, 0x4E }, // TCON, Content Type
-            new byte[]{ 0x54, 0x43, 0x4F, 0x50 }, // TCOP, Copyright message
-            new byte[]{ 0x54, 0x44, 0x41, 0x54 }, // TDAT, Date
-            new byte[]{ 0x54, 0x44, 0x4C, 0x59 }, // TDLY, Playlist delay
-            new byte[]{ 0x54, 0x45, 0x4E, 0x43 }, // TENC, Encoded by
-            new byte[]{ 0x54, 0x45, 0x58, 0x54 }, // TEXT, Lyricist / Text Writer
-            new byte[]{ 0x54, 0x46, 0x4C, 0x54 }, // TFLT, File type
-            new byte[]{ 0x54, 0x49, 0x4D, 0x45 }, // TIME, Time
-            new byte[]{ 0x54, 0x49, 0x54, 0x31 }, // TIT1, Content group description
-            new byte[]{ 0x54, 0x49, 0x54, 0x32 }, // TIT2, Title / Songname / Content description
-            new byte[]{ 0x54, 0x49, 0x54, 0x33 }, // TIT3, Subtitle / Description Refinement
-            new byte[]{ 0x54, 0x4B, 0x45, 0x59 }, // TKEY, Initial Key
-            new byte[]{ 0x54, 0x4C, 0x41, 0x4E }, // TLAN, Language(s)
-            new byte[]{ 0x54, 0x4C, 0x45, 0x4E }, // TLEN, Length
-            new byte[]{ 0x54, 0x4D, 0x45, 0x44 }, // TMED, Media Type
-            new byte[]{ 0x54, 0x4F, 0x41, 0x4C }, // TOAL, Original Album / Movie / Show Title
-            new byte[]{ 0x54, 0x4F, 0x46, 0x4E }, // TOFN, Original Filename
-            new byte[]{ 0x54, 0x4F, 0x4C, 0x59 }, // TOLY, Original lyricist(s) / text writer(s)
-            new byte[]{ 0x54, 0x4F, 0x50, 0x45 }, // TOPE, Original artist(s) / performer(s)
-            new byte[]{ 0x54, 0x4F, 0x52, 0x59 }, // TORY, Original release year
-            new byte[]{ 0x54, 0x4F, 0x57, 0x4E }, // TOWN, File owner / licensee
-            new byte[]{ 0x54, 0x50, 0x45, 0x31 }, // TPE1, Lead Performer(s) / Soloist(s)
-            new byte[]{ 0x54, 0x50, 0x45, 0x32 }, // TPE2, Band / Orchesta / accompaniment
-            new byte[]{ 0x54, 0x50, 0x45, 0x33 }, // TPE3, Conductor / Performer refinement
-            new byte[]{ 0x54, 0x50, 0x45, 0x34 }, // TPE4, Interpreted, Remixed, or otherwise modified by
-            new byte[]{ 0x54, 0x50, 0x4F, 0x53 }, // TPOS, Part of a set
-            new byte[]{ 0x54, 0x50, 0x50, 0x42 }, // TPUB, Publisher
-            new byte[]{ 0x54, 0x52, 0x43, 0x4B }, // TRCK, Track number (/ Position in set)
-            new byte[]{ 0x54, 0x52, 0x44, 0x41 }, // TRDA, Recording dates
-            new byte[]{ 0x54, 0x52, 0x53, 0x4E }, // TRSN, Internet radio station name
-            new byte[]{ 0x54, 0x52, 0x53, 0x4F }, // TRSO, Internet radio station owner
-            new byte[]{ 0x54, 0x53, 0x49, 0x5A }, // TSIZ, Size
-            new byte[]{ 0x54, 0x53, 0x52, 0x43 }, // TSRC, ISRC (international standard recording code)
-            new byte[]{ 0x54, 0x53, 0x53, 0x45 }, // TSSE, Software / Hardware and settings used for encoding
-            new byte[]{ 0x54, 0x59, 0x45, 0x52 }, // TYER, Year
-            new byte[]{ 0x54, 0x58, 0x58, 0x58 }, // TXXX, User defined text information frame
-            new byte[]{ 0x55, 0x46, 0x49, 0x44 }, // UFID, unique file identifier
-            new byte[]{ 0x55, 0x53, 0x45, 0x52 }, // USER, Terms of use
-            new byte[]{ 0x55, 0x53, 0x4C, 0x54 }, // USLT, Unsychronized lyric / text transcription
-            new byte[]{ 0x57, 0x43, 0x4F, 0x4D }, // WCOM, Commercial information
-            new byte[]{ 0x57, 0x43, 0x4F, 0x50 }, // WCOP, Copyright / Legal information
-            new byte[]{ 0x57, 0x4F, 0x41, 0x46 }, // WOAF, audio file webpage
-            new byte[]{ 0x57, 0x4F, 0x41, 0x52 }, // WOAR, artist / performer webpage
-            new byte[]{ 0x57, 0x4F, 0x41, 0x53 }, // WOAS, audio source webpage
-            new byte[]{ 0x57, 0x4F, 0x52, 0x53 }, // WORS, internet radio station homepage
-            new byte[]{ 0x57, 0x50, 0x41, 0x59 }, // WPAY, Payment
-            new byte[]{ 0x57, 0x50, 0x55, 0x42 }, // WPUB, Publishers official webpage
-            new byte[]{ 0x57, 0x58, 0x58, 0x58 }, // WXXX, User defined URL link frame
-        };
+        private readonly byte[][] frames;
+        private readonly Dictionary<FrameType, Action<string>> frameTypeFields;
 
         private readonly byte version;
         private readonly byte revision;
@@ -217,6 +143,87 @@ namespace MusicMetaData.Tags
         /// <param name="stream"></param>
         public ID3v2Tags(Stream stream)
         {
+            frames = new byte[][]
+            {
+                new byte[]{ 0x41, 0x45, 0x4E, 0x43 }, // AENC, Audio encryption
+                new byte[]{ 0x41, 0x50, 0x49, 0x43 }, // APIC, Attached Picture
+                new byte[]{ 0x43, 0x4F, 0x4D, 0x4D }, // COMM, Comment
+                new byte[]{ 0x43, 0x4F, 0x4D, 0x52 }, // COMR, Commercial frame
+                new byte[]{ 0x45, 0x4e, 0x43, 0x52 }, // ENCR, Encryption method registration
+                new byte[]{ 0x45, 0x51, 0x55, 0x41 }, // EQUA, Equalization
+                new byte[]{ 0x45, 0x54, 0x43, 0x4F }, // ETCO, Event Timing Codes
+                new byte[]{ 0x47, 0x45, 0x4F, 0x42 }, // GEOB, General Encapsulated Object
+                new byte[]{ 0x47, 0x52, 0x49, 0x44 }, // GRID, Group identification registration
+                new byte[]{ 0x49, 0x50, 0x4C, 0x53 }, // IPLS, Involved People List
+                new byte[]{ 0x4C, 0x49, 0x4E, 0x4B }, // LINK, Linked Information
+                new byte[]{ 0x4D, 0x43, 0x44, 0x49 }, // MCDI, Music CD identifier
+                new byte[]{ 0x4D, 0x4C, 0x4C, 0x54 }, // MLLT, MPEG location lookup table
+                new byte[]{ 0x4F, 0x57, 0x4E, 0x45 }, // OWNE, Ownership frame
+                new byte[]{ 0x50, 0x52, 0x49, 0x56 }, // PRIV, Private frame
+                new byte[]{ 0x50, 0x43, 0x4E, 0x54 }, // PCNT, Play Counter
+                new byte[]{ 0x50, 0x4F, 0x50, 0x4D }, // POPM, Popularimeter
+                new byte[]{ 0x50, 0x4F, 0x53, 0x53 }, // POSS, Position Synchronisation frame
+                new byte[]{ 0x52, 0x42, 0x55, 0x46 }, // RBUF, Recommended Buffer Size
+                new byte[]{ 0x52, 0x56, 0x41, 0x44 }, // RVAD, Relative volume adjustment
+                new byte[]{ 0x52, 0x56, 0x52, 0x42 }, // RVRB, Reverb
+                new byte[]{ 0x53, 0x59, 0x4C, 0x54 }, // SYLT, Synchronized lyric / text
+                new byte[]{ 0x53, 0x59, 0x54, 0x43 }, // SYTC, Synchronized tempo codes
+                new byte[]{ 0x54, 0x41, 0x4C, 0x42 }, // TALB, Album / Movie / Show title
+                new byte[]{ 0x54, 0x42, 0x50, 0x4D }, // TBPM, BPM
+                new byte[]{ 0x54, 0x43, 0x4F, 0x4D }, // TCOM, Composer
+                new byte[]{ 0x54, 0x43, 0x4F, 0x4E }, // TCON, Content Type
+                new byte[]{ 0x54, 0x43, 0x4F, 0x50 }, // TCOP, Copyright message
+                new byte[]{ 0x54, 0x44, 0x41, 0x54 }, // TDAT, Date
+                new byte[]{ 0x54, 0x44, 0x4C, 0x59 }, // TDLY, Playlist delay
+                new byte[]{ 0x54, 0x45, 0x4E, 0x43 }, // TENC, Encoded by
+                new byte[]{ 0x54, 0x45, 0x58, 0x54 }, // TEXT, Lyricist / Text Writer
+                new byte[]{ 0x54, 0x46, 0x4C, 0x54 }, // TFLT, File type
+                new byte[]{ 0x54, 0x49, 0x4D, 0x45 }, // TIME, Time
+                new byte[]{ 0x54, 0x49, 0x54, 0x31 }, // TIT1, Content group description
+                new byte[]{ 0x54, 0x49, 0x54, 0x32 }, // TIT2, Title / Songname / Content description
+                new byte[]{ 0x54, 0x49, 0x54, 0x33 }, // TIT3, Subtitle / Description Refinement
+                new byte[]{ 0x54, 0x4B, 0x45, 0x59 }, // TKEY, Initial Key
+                new byte[]{ 0x54, 0x4C, 0x41, 0x4E }, // TLAN, Language(s)
+                new byte[]{ 0x54, 0x4C, 0x45, 0x4E }, // TLEN, Length
+                new byte[]{ 0x54, 0x4D, 0x45, 0x44 }, // TMED, Media Type
+                new byte[]{ 0x54, 0x4F, 0x41, 0x4C }, // TOAL, Original Album / Movie / Show Title
+                new byte[]{ 0x54, 0x4F, 0x46, 0x4E }, // TOFN, Original Filename
+                new byte[]{ 0x54, 0x4F, 0x4C, 0x59 }, // TOLY, Original lyricist(s) / text writer(s)
+                new byte[]{ 0x54, 0x4F, 0x50, 0x45 }, // TOPE, Original artist(s) / performer(s)
+                new byte[]{ 0x54, 0x4F, 0x52, 0x59 }, // TORY, Original release year
+                new byte[]{ 0x54, 0x4F, 0x57, 0x4E }, // TOWN, File owner / licensee
+                new byte[]{ 0x54, 0x50, 0x45, 0x31 }, // TPE1, Lead Performer(s) / Soloist(s)
+                new byte[]{ 0x54, 0x50, 0x45, 0x32 }, // TPE2, Band / Orchesta / accompaniment
+                new byte[]{ 0x54, 0x50, 0x45, 0x33 }, // TPE3, Conductor / Performer refinement
+                new byte[]{ 0x54, 0x50, 0x45, 0x34 }, // TPE4, Interpreted, Remixed, or otherwise modified by
+                new byte[]{ 0x54, 0x50, 0x4F, 0x53 }, // TPOS, Part of a set
+                new byte[]{ 0x54, 0x50, 0x50, 0x42 }, // TPUB, Publisher
+                new byte[]{ 0x54, 0x52, 0x43, 0x4B }, // TRCK, Track number (/ Position in set)
+                new byte[]{ 0x54, 0x52, 0x44, 0x41 }, // TRDA, Recording dates
+                new byte[]{ 0x54, 0x52, 0x53, 0x4E }, // TRSN, Internet radio station name
+                new byte[]{ 0x54, 0x52, 0x53, 0x4F }, // TRSO, Internet radio station owner
+                new byte[]{ 0x54, 0x53, 0x49, 0x5A }, // TSIZ, Size
+                new byte[]{ 0x54, 0x53, 0x52, 0x43 }, // TSRC, ISRC (international standard recording code)
+                new byte[]{ 0x54, 0x53, 0x53, 0x45 }, // TSSE, Software / Hardware and settings used for encoding
+                new byte[]{ 0x54, 0x59, 0x45, 0x52 }, // TYER, Year
+                new byte[]{ 0x54, 0x58, 0x58, 0x58 }, // TXXX, User defined text information frame
+                new byte[]{ 0x55, 0x46, 0x49, 0x44 }, // UFID, unique file identifier
+                new byte[]{ 0x55, 0x53, 0x45, 0x52 }, // USER, Terms of use
+                new byte[]{ 0x55, 0x53, 0x4C, 0x54 }, // USLT, Unsychronized lyric / text transcription
+                new byte[]{ 0x57, 0x43, 0x4F, 0x4D }, // WCOM, Commercial information
+                new byte[]{ 0x57, 0x43, 0x4F, 0x50 }, // WCOP, Copyright / Legal information
+                new byte[]{ 0x57, 0x4F, 0x41, 0x46 }, // WOAF, audio file webpage
+                new byte[]{ 0x57, 0x4F, 0x41, 0x52 }, // WOAR, artist / performer webpage
+                new byte[]{ 0x57, 0x4F, 0x41, 0x53 }, // WOAS, audio source webpage
+                new byte[]{ 0x57, 0x4F, 0x52, 0x53 }, // WORS, internet radio station homepage
+                new byte[]{ 0x57, 0x50, 0x41, 0x59 }, // WPAY, Payment
+                new byte[]{ 0x57, 0x50, 0x55, 0x42 }, // WPUB, Publishers official webpage
+                new byte[]{ 0x57, 0x58, 0x58, 0x58 }, // WXXX, User defined URL link frame
+            };
+
+            frameTypeFields = new Dictionary<FrameType, Action<string>>();
+            InitializeFrameDictionary();
+
             stream.Position = 0;
 
             var reader = new BinaryReader(stream);
@@ -237,6 +244,84 @@ namespace MusicMetaData.Tags
 
             var size = header.SubArray(6, 4);
             DataSize = CalculateFrameLength(size, IGNORE_MOST_SIGNIFICANT_BYTE);
+        }
+
+        private void InitializeFrameDictionary()
+        {
+            frameTypeFields.Add(FrameType.AENC, null);
+            frameTypeFields.Add(FrameType.APIC, null);
+            frameTypeFields.Add(FrameType.COMM, null);
+            frameTypeFields.Add(FrameType.COMR, null);
+            frameTypeFields.Add(FrameType.ENCR, null);
+            frameTypeFields.Add(FrameType.EQUA, null);
+            frameTypeFields.Add(FrameType.ETCO, null);
+            frameTypeFields.Add(FrameType.GEOB, null);
+            frameTypeFields.Add(FrameType.GRID, null);
+            frameTypeFields.Add(FrameType.IPLS, null);
+            frameTypeFields.Add(FrameType.LINK, null);
+            frameTypeFields.Add(FrameType.MCDI, null);
+            frameTypeFields.Add(FrameType.MLLT, null);
+            frameTypeFields.Add(FrameType.OWNE, null);
+            frameTypeFields.Add(FrameType.PRIV, null);
+            frameTypeFields.Add(FrameType.PCNT, null);
+            frameTypeFields.Add(FrameType.POPM, null);
+            frameTypeFields.Add(FrameType.POSS, null);
+            frameTypeFields.Add(FrameType.RBUF, null);
+            frameTypeFields.Add(FrameType.RVAD, null);
+            frameTypeFields.Add(FrameType.RVRB, null);
+            frameTypeFields.Add(FrameType.SYLT, null);
+            frameTypeFields.Add(FrameType.SYTC, null);
+            frameTypeFields.Add(FrameType.TALB, (value) => AlbumName = value);
+            frameTypeFields.Add(FrameType.TBPM, (value) => BPM = int.Parse(value));
+            frameTypeFields.Add(FrameType.TCOM, (value) => LeadComposer = value);
+            frameTypeFields.Add(FrameType.TCON, (value) => Genres = value.Split('\0'));
+            frameTypeFields.Add(FrameType.TCOP, null);
+            frameTypeFields.Add(FrameType.TDAT, null); 
+            frameTypeFields.Add(FrameType.TDLY, null); 
+            frameTypeFields.Add(FrameType.TENC, null); 
+            frameTypeFields.Add(FrameType.TEXT, null); 
+            frameTypeFields.Add(FrameType.TFLT, null); 
+            frameTypeFields.Add(FrameType.TIME, null); 
+            frameTypeFields.Add(FrameType.TIT1, null); 
+            frameTypeFields.Add(FrameType.TIT2, (value) => Title = value);
+            frameTypeFields.Add(FrameType.TIT3, null); 
+            frameTypeFields.Add(FrameType.TKEY, null); 
+            frameTypeFields.Add(FrameType.TLAN, null); 
+            frameTypeFields.Add(FrameType.TLEN, null); 
+            frameTypeFields.Add(FrameType.TMED, null); 
+            frameTypeFields.Add(FrameType.TOAL, null); 
+            frameTypeFields.Add(FrameType.TOFN, null); 
+            frameTypeFields.Add(FrameType.TOLY, null); 
+            frameTypeFields.Add(FrameType.TOPE, null); 
+            frameTypeFields.Add(FrameType.TORY, null); 
+            frameTypeFields.Add(FrameType.TOWN, null); 
+            frameTypeFields.Add(FrameType.TPE1, (value) => LeadArtist = value);
+            frameTypeFields.Add(FrameType.TPE2, (value) => Band = value);
+            frameTypeFields.Add(FrameType.TPE3, null);
+            frameTypeFields.Add(FrameType.TPE4, null);
+            frameTypeFields.Add(FrameType.TPOS, (value) => { var numbers = value.Split('/'); SetNumber = int.Parse(numbers[0]); AmountOfSets = int.Parse(numbers[1]); });
+            frameTypeFields.Add(FrameType.TPUB, (value) => Publisher = value);
+            frameTypeFields.Add(FrameType.TRCK, (value) => { var numbers = value.Split('/'); TrackNumber = int.Parse(numbers[0]); AmountOfTracksInSet = int.Parse(numbers[1]); });
+            frameTypeFields.Add(FrameType.TRDA, null);
+            frameTypeFields.Add(FrameType.TRSN, null);
+            frameTypeFields.Add(FrameType.TRSO, null);
+            frameTypeFields.Add(FrameType.TSIZ, null);
+            frameTypeFields.Add(FrameType.TSRC, null);
+            frameTypeFields.Add(FrameType.TSSE, null);
+            frameTypeFields.Add(FrameType.TYER, (value) => Year = int.Parse(value));
+            frameTypeFields.Add(FrameType.TXXX, null);
+            frameTypeFields.Add(FrameType.UFID, null);
+            frameTypeFields.Add(FrameType.USER, null);
+            frameTypeFields.Add(FrameType.USLT, null);
+            frameTypeFields.Add(FrameType.WCOM, null);
+            frameTypeFields.Add(FrameType.WCOP, null);
+            frameTypeFields.Add(FrameType.WOAF, null);
+            frameTypeFields.Add(FrameType.WOAR, null);
+            frameTypeFields.Add(FrameType.WOAS, null);
+            frameTypeFields.Add(FrameType.WORS, null);
+            frameTypeFields.Add(FrameType.WPAY, null);
+            frameTypeFields.Add(FrameType.WPUB, null);
+            frameTypeFields.Add(FrameType.WXXX, null);
         }
 
         /// <summary>
@@ -282,9 +367,9 @@ namespace MusicMetaData.Tags
         private FrameType FindFrameType(byte[] type)
         {
             int pos = 0;
-            while (pos < frameIds.Length)
+            while (pos < frameTypeFields.Count)
             {
-                if (frameIds[pos].SequenceEqual(type))
+                if (frames[pos].SequenceEqual(type))
                     return (FrameType)(pos);
                 pos++;
             }
@@ -365,50 +450,9 @@ namespace MusicMetaData.Tags
         /// <param name="value">The value that should be inserted</param>
         private void SetTag(FrameType type, string value)
         {
-            // Consider having a dictionary having a ref to the field in the Tag to circumvent most of the switch / case (repetition)
-            switch (type)
+            if (frameTypeFields.TryGetValue(type, out Action<string> setAction) && setAction != null)
             {
-                case FrameType.TALB:
-                    AlbumName = value;
-                    break;
-                case FrameType.TBPM:
-                    if (int.TryParse(value, out var _bpm))
-                        BPM = _bpm;
-                    break;
-                case FrameType.TCOM:
-                    LeadComposer = value;
-                    break;
-                case FrameType.TCON:
-                    // TODO: ID3v2 is able to use numbers to represent predefined genres. The list is part of the ID3v1 implementation.
-                    Genres = value.Split('\0');
-                    break;
-                case FrameType.TPUB:
-                    Publisher = value;
-                    break;
-                case FrameType.TIT2:
-                    Title = value;
-                    break;
-                case FrameType.TYER:
-                    if (int.TryParse(value, out var _year))
-                        Year = _year;
-                    break;
-                case FrameType.TRCK:
-                    var numbers = value.Split('/');
-                    if (int.TryParse(numbers[0], out var _tracknumber))
-                        TrackNumber = _tracknumber;
-                    if (int.TryParse(numbers[1], out var _totaltracksinset))
-                        AmountOfTracksInSet = _totaltracksinset;
-                    break;
-                case FrameType.TPE2:
-                    LeadArtist = value;
-                    break;
-                case FrameType.TPOS:
-                    numbers = value.Split('/');
-                    if (int.TryParse(numbers[0], out var _setnumber))
-                        SetNumber = _setnumber;
-                    if (int.TryParse(numbers[1], out var _amountofsets))
-                        AmountOfSets = _amountofsets;
-                    break;
+                setAction(value);
             }
         }
 

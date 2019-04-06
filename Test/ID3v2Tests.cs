@@ -75,9 +75,14 @@ namespace Test
             var tags = MTag.Create(stream);
 
             tags.Title.Should().Be("The Crutch");
-            tags.LeadArtist.Should().Be("Billy Talent");
+            tags.Band.Should().Be("Billy Talent");
+            tags.TrackNumber.Should().Be(3);
+            tags.AmountOfTracksInSet.Should().Be(12);
             tags.AlbumName.Should().Be("Afraid of Heights");
+            tags.SetNumber.Should().Be(1);
+            tags.AmountOfSets.Should().Be(1);
             tags.Year.Should().Be(2016);
+            tags.Genres.Should().Contain("Alternative & Punk");
         }
         [TestMethod]
         public void WhenYearIsSet_ReturnYear()
